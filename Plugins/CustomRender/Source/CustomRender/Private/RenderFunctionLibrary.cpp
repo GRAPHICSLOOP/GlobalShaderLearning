@@ -71,6 +71,39 @@ void DrawRenderTarget_RenderThread(
 	RHICmdList.EndRenderPass();
 }
 
+void DrawComputerShader_RenderThread(FRHICommandListImmediate& RHICmdList,
+									FTextureRenderTargetResource* RenderTargetResource,
+									ERHIFeatureLevel::Type FeatureLevel)
+{
+	check(IsInRenderingThread());
+
+	FTexture2DRHIRef Texture2DRHIRef = RenderTargetResource->GetRenderTargetTexture();
+	uint32 GroupSize = 32;
+	uint32 GroupSizeX = FMath::DivideAndRoundUp(RenderTargetResource->GetSizeX(), GroupSize);
+	uint32 GroupSizeY = FMath::DivideAndRoundUp(RenderTargetResource->GetSizeY(), GroupSize);
+
+	// 设置computershader
+	FGlobalShaderMap* GlobalShaderMap = GetGlobalShaderMap(FeatureLevel);
+	TShaderMapRef<FSimpleShaderCS> ComputerShader(GlobalShaderMap);
+	RHICmdList.SetComputeShader(ComputerShader.GetComputeShader());
+
+	// 创建UAV
+	FRHIResourceCreateInfo CreateInfo;
+	FTexture2DRHIRef tempRHIRef = RHICreateTexture2D(RenderTargetResource->GetSizeX(), RenderTargetResource->GetSizeY(),
+													PF_FloatRGBA, 1, 1, TexCreate_ShaderResource | TexCreate_UAV,
+													CreateInfo);
+	FUnorderedAccessViewRHIRef UAV = RHICreateUnorderedAccessView(tempRHIRef);
+
+	// 开始渲染
+	ComputerShader->SetParameters(RHICmdList,UAV);
+	DispatchComputeShader(RHICmdList,ComputerShader,GroupSizeX,GroupSizeY,1);
+	ComputerShader->UnsetParameters(RHICmdList,UAV);
+
+	// 复制结果
+	FRHICopyTextureInfo CopyInfo;
+	RHICmdList.CopyTexture(tempRHIRef,Texture2DRHIRef,CopyInfo);
+}
+
 void FImportImage::Init2DWithParams(int32 InSizeX, int32 InSizeY, ETextureSourceFormat InFormat, bool InSRGB)
 {
 	SizeX = InSizeX;
@@ -112,11 +145,30 @@ void URenderFunctionLibrary::DrawTestShaderRenderTarget(UTextureRenderTarget2D* 
 	);
 }
 
-void URenderFunctionLibrary::TextureWriting(UTexture2D* TextureToBeWrite, AActor* AC)
+void URenderFunctionLibrary::DrawTestCPShader(UTextureRenderTarget2D* OutputRenderTarget, AActor* AC)
+{
+	if (OutputRenderTarget == nullptr)
+		return;
+
+	const UWorld* World = AC->GetWorld();
+	ERHIFeatureLevel::Type FeatureLevel = World->Scene->GetFeatureLevel();
+	FTextureRenderTargetResource* TextureRenderTargetResource = OutputRenderTarget->
+		GameThread_GetRenderTargetResource();
+
+	ENQUEUE_RENDER_COMMAND(CaptureCommand)(
+		[TextureRenderTargetResource, FeatureLevel](
+		FRHICommandListImmediate& RHICmdList)
+		{
+			DrawComputerShader_RenderThread(RHICmdList, TextureRenderTargetResource, FeatureLevel);
+		}
+	);
+}
+
+void URenderFunctionLibrary::TextureWriting(UTexture2D* TextureToBeWrite)
 {
 	check(IsInGameThread());
 
-	if (AC == nullptr || TextureToBeWrite == nullptr)
+	if (TextureToBeWrite == nullptr)
 		return;
 
 	TextureToBeWrite->CompressionSettings = TextureCompressionSettings::TC_VectorDisplacementmap;
@@ -126,7 +178,6 @@ void URenderFunctionLibrary::TextureWriting(UTexture2D* TextureToBeWrite, AActor
 	// 需要注意的是，MipGenSetting是编辑器数据，该变量是在WITH_EDITORONLY_DATA里被定义的，因此是无法被打包出去的
 #endif
 	TextureToBeWrite->UpdateResource();
-
 	// 锁定-开始准备写入数据
 	void* Data = TextureToBeWrite->PlatformData->Mips[0].BulkData.Lock(LOCK_READ_WRITE);
 	if (Data == nullptr)
@@ -141,10 +192,11 @@ void URenderFunctionLibrary::TextureWriting(UTexture2D* TextureToBeWrite, AActor
 		Colors.Add(FColor::Blue);
 	}
 
+
 	int32 Stride = sizeof(FColor);
 	FMemory::Memcpy(Data, Colors.GetData(), TextureSize * Stride);
-
 	TextureToBeWrite->PlatformData->Mips[0].BulkData.Unlock();
+	TextureToBeWrite->UpdateResource();
 }
 
 void URenderFunctionLibrary::LoadTexture2DFormFile(const FString& Filename, const FString& PackageName)
@@ -276,7 +328,7 @@ bool ImportImage(const uint8* Buffer, uint32 Length, FFeedbackContext* Warn, FIm
 		}
 
 		OutImage.Init2DWithParams(PngImageWrapper->GetWidth(), PngImageWrapper->GetHeight(), TextureFormat,
-								BitDepth < 16);
+								BitDepth > 8);
 
 		return PngImageWrapper->GetRaw(Format, BitDepth, OutImage.RawData);
 	}

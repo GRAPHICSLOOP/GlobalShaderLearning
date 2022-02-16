@@ -79,6 +79,32 @@ private:
 	LAYOUT_FIELD(FShaderResourceParameter, SampleStatePara);
 };
 
+class FSimpleShaderCS :public FGlobalShader
+{
+	DECLARE_SHADER_TYPE(FSimpleShaderCS, Global)
+public:
+	FSimpleShaderCS(){}
+	FSimpleShaderCS(const ShaderMetaType::CompiledShaderInitializerType& Initializer);
+
+	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
+	{
+		return IsFeatureLevelSupported(Parameters.Platform, ERHIFeatureLevel::SM5);
+	}
+
+	static void ModifyCompilationEnvironment(const FGlobalShaderPermutationParameters& Parameters,
+											FShaderCompilerEnvironment& OutEnvironment)
+	{
+		FGlobalShader::ModifyCompilationEnvironment(Parameters, OutEnvironment);
+	}
+
+	void SetParameters(FRHICommandListImmediate& RHICmdList,FUnorderedAccessViewRHIRef& UAV);
+	void UnsetParameters(FRHICommandListImmediate& RHICmdList,FUnorderedAccessViewRHIRef& UAV);
+	
+private:
+	// raw shader parameter
+	LAYOUT_FIELD(FRWShaderParameter,OutputSurfacePara);
+};
+
 struct FCustomVertex
 {
 	FVector4 Pos; // 位置

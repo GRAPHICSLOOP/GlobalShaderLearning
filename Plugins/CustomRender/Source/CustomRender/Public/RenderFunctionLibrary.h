@@ -30,7 +30,10 @@ class URenderFunctionLibrary : public UBlueprintFunctionLibrary
 											FLinearColor Color, UTexture2D* Texture, FCustomUniformData Data);
 
 	UFUNCTION(BlueprintCallable, Category = "RenderShaderLibaryPlugin", meta = (WorldContext = "WorldContextObject"))
-	static void TextureWriting(UTexture2D* TextureToBeWrite, AActor* AC);
+	static void DrawTestCPShader(class UTextureRenderTarget2D* OutputRenderTarget, AActor* AC);
+
+	UFUNCTION(BlueprintCallable, Category = "RenderShaderLibaryPlugin", meta = (WorldContext = "WorldContextObject"))
+	static void TextureWriting(UTexture2D* TextureToBeWrite);
 
 	UFUNCTION(BlueprintCallable, Category = "RenderShaderLibaryPlugin", meta = (WorldContext = "WorldContextObject"))
 	static void LoadTexture2DFormFile(const FString& Filename,const FString& PackageName);
