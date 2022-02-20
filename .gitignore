@@ -1,0 +1,17 @@
+
+.idea/*
+.vs/*
+Binaries/*
+Build/*
+config/*
+content/*
+DerivedDataCache/*
+Intermediate/*
+Saved/*
+Script/*
+Source/*
+WindowsNoEditor/*
+Plugins/CustomRender/Binaries/*
+Plugins/CustomRender/Intermediate/*
+RenderLearning.sln
+RenderLearning.uproject
