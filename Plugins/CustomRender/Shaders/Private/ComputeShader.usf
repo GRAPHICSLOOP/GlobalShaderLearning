@@ -1,9 +1,6 @@
 ﻿#include "/Engine/Public/Platform.ush"
 #include "/Engine/Private/Common.ush"
 
-#define R(p,a,t) lerp(a*dot(p,a),p,cos(t))+sin(t)*cross(p,a)
-#define H(h) (cos((h)*6.3+float3(0,23,21))*.5+.5)
-
 RWTexture2D<float4> OutputSurface;
 float GTime;
 
@@ -11,31 +8,8 @@ float GTime;
 [numthreads(32,32,1)]
 void MainCS(uint3 ThreadId : SV_DispatchThreadID)
 {
-	float sizeX, sizeY;
-	OutputSurface.GetDimensions(sizeX, sizeY);
-    float2 iResolution = float2(sizeX, sizeY);
-    
-    float3 p = float3(0.f,0.f,0.f);;
-	float2 size = iResolution;
-	float3 c = float3(0.f,0.f,0.f);
-    float3 d = normalize(float3((ThreadId.xy - .5 * size.xy) / size.y, 1));
-    
-    for (float i = 0., s, e, g = 0., t = GTime; i++ < 90.;)
-    {
-        p = g * d;
-        p.z -= .4;
-        p = R(p, H(t * .01), t * .2);
-        p = abs(p);
-        s = 3.;
-        for (int j = 0; j++ < 6;)
-            s *= e = max(1. / dot(p, p), 3.),
-           p = p.x < p.y ? p.zxy : p.zyx,
-           p = abs(p * e - float3(5, 1, 5)),
-           p = R(p, normalize(float3(2, 2, 1)), 2.1);
-        g += e = length(p.xz) / s + 1e-4;
-        c += lerp(float3(1.f,1.f,1.f), H(log(s) * .3), .4) * .019 / exp(.2 * i * i * e);
-    }
-    c *= c * c;
-    OutputSurface[ThreadId.xy] = float4(c, 1.f);
+    // 输出0-1的黑白图
+    float Time = frac(GTime);
+    OutputSurface[ThreadId.xy] = float4(Time,Time,Time, 1.f);
 
 }
