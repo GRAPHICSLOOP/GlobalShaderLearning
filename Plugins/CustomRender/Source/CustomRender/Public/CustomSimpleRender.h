@@ -71,7 +71,7 @@ public:
 	}
 
 	// 设置shader参数
-	void SetParameters(FRHICommandListImmediate& RHICmdList, FLinearColor Color, FTextureReferenceRHIRef Texture);
+	void SetParameters(FRHICommandListImmediate& RHICmdList, FLinearColor Color, FRHITexture* Texture);
 	void SetUniformData(FRHICommandListImmediate& RHICmdList, FCustomUniformData& Data);
 private:
 	LAYOUT_FIELD(FShaderParameter, SimpleColorPara);
@@ -79,11 +79,14 @@ private:
 	LAYOUT_FIELD(FShaderResourceParameter, SampleStatePara);
 };
 
-class FSimpleShaderCS :public FGlobalShader
+class FSimpleShaderCS : public FGlobalShader
 {
 	DECLARE_SHADER_TYPE(FSimpleShaderCS, Global)
 public:
-	FSimpleShaderCS(){}
+	FSimpleShaderCS()
+	{
+	}
+
 	FSimpleShaderCS(const ShaderMetaType::CompiledShaderInitializerType& Initializer);
 
 	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
@@ -97,12 +100,13 @@ public:
 		FGlobalShader::ModifyCompilationEnvironment(Parameters, OutEnvironment);
 	}
 
-	void SetParameters(FRHICommandListImmediate& RHICmdList,FUnorderedAccessViewRHIRef& UAV);
-	void UnsetParameters(FRHICommandListImmediate& RHICmdList,FUnorderedAccessViewRHIRef& UAV);
-	
+	void SetParameters(FRHICommandListImmediate& RHICmdList, FUnorderedAccessViewRHIRef& UAV, float Time);
+	void UnsetParameters(FRHICommandListImmediate& RHICmdList, FUnorderedAccessViewRHIRef& UAV);
+
 private:
 	// raw shader parameter
-	LAYOUT_FIELD(FRWShaderParameter,OutputSurfacePara);
+	LAYOUT_FIELD(FRWShaderParameter, OutputSurfacePara);
+	LAYOUT_FIELD(FShaderParameter, TimePara);
 };
 
 struct FCustomVertex

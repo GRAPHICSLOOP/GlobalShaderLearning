@@ -4,9 +4,9 @@
 // 定义结构体
 IMPLEMENT_UNIFORM_BUFFER_STRUCT(FCustomUniformDataParameters, "CustomUniformDataParameters");
 // 声明shader实现的地方,ShaderPathMap是我们设定的映射，在插件启动函数中设置的
-IMPLEMENT_SHADER_TYPE(, FSimpleShaderVS, TEXT("/ShaderPathMap/Private/MyShader.usf"), TEXT("MainVS"), SF_Vertex);
-IMPLEMENT_SHADER_TYPE(, FSimpleShaderPS, TEXT("/ShaderPathMap/Private/MyShader.usf"), TEXT("MainPS"), SF_Pixel);
-IMPLEMENT_SHADER_TYPE(, FSimpleShaderCS, TEXT("/ShaderPathMap/Private/MyShader.usf"), TEXT("MainCS"), SF_Compute);
+IMPLEMENT_SHADER_TYPE(, FSimpleShaderVS, TEXT("/ShaderPathMap/Private/GlobalShader.usf"), TEXT("MainVS"), SF_Vertex);
+IMPLEMENT_SHADER_TYPE(, FSimpleShaderPS, TEXT("/ShaderPathMap/Private/GlobalShader.usf"), TEXT("MainPS"), SF_Pixel);
+IMPLEMENT_SHADER_TYPE(, FSimpleShaderCS, TEXT("/ShaderPathMap/Private/ComputeShader.usf"), TEXT("MainCS"), SF_Compute);
 
 FSimpleShaderVS::FSimpleShaderVS(const ShaderMetaType::CompiledShaderInitializerType& Initializer)
 	: FGlobalShader(Initializer)
@@ -22,7 +22,7 @@ FSimpleShaderPS::FSimpleShaderPS(const ShaderMetaType::CompiledShaderInitializer
 }
 
 void FSimpleShaderPS::SetParameters(FRHICommandListImmediate& RHICmdList, FLinearColor Color,
-									FTextureReferenceRHIRef Texture)
+									FRHITexture* Texture)
 {
 	SetShaderValue(RHICmdList, RHICmdList.GetBoundPixelShader(), SimpleColorPara, Color);
 	SetTextureParameter(RHICmdList, RHICmdList.GetBoundPixelShader(),
@@ -47,11 +47,13 @@ FSimpleShaderCS::FSimpleShaderCS(const ShaderMetaType::CompiledShaderInitializer
 	: FGlobalShader(Initializer)
 {
 	this->OutputSurfacePara.Bind(Initializer.ParameterMap,TEXT("OutputSurface"));
+	this->TimePara.Bind(Initializer.ParameterMap,TEXT("GTime"));
 }
 
-void FSimpleShaderCS::SetParameters(FRHICommandListImmediate& RHICmdList, FUnorderedAccessViewRHIRef& UAV)
+void FSimpleShaderCS::SetParameters(FRHICommandListImmediate& RHICmdList, FUnorderedAccessViewRHIRef& UAV, float Time)
 {
 	RHICmdList.SetUAVParameter(RHICmdList.GetBoundComputeShader(),OutputSurfacePara.GetUAVIndex(),UAV);
+	SetShaderValue(RHICmdList,RHICmdList.GetBoundComputeShader(),TimePara,Time);
 	//RHICmdList.TransitionResource(EResourceTransitionAccess::ERWBarrier,EResourceTransitionPipeline::EComputeToCompute,UAV);
 	// 内部调用的是SetUAVParameterIfCS
 	//OutputSurfacePara.SetTexture(RHICmdList,RHICmdList.GetBoundComputeShader(),nullptr,UAV);

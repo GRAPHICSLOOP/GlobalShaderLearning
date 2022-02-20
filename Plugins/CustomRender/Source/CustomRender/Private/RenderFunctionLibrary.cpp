@@ -11,13 +11,22 @@ DEFINE_LOG_CATEGORY_STATIC(CustomLog, Log, All);
 TGlobalResource<FCustomVertexBuffer> G_CustomVertexBuffer;
 TGlobalResource<FCustomIndexBuffer> G_CustomIndexBuffer;
 
+void FImportImage::Init2DWithParams(int32 InSizeX, int32 InSizeY, ETextureSourceFormat InFormat, bool InSRGB)
+{
+	SizeX = InSizeX;
+	SizeY = InSizeY;
+	NumMips = 1;
+	Format = InFormat;
+	SRGB = InSRGB;
+}
+
 void DrawRenderTarget_RenderThread(
 	FRHICommandListImmediate& RHICmdList,
 	FTextureRenderTargetResource* RenderTargetResource,
 	ERHIFeatureLevel::Type FeatureLevel,
 	FName TextureRenderTargetName,
 	FLinearColor Color,
-	FTextureReferenceRHIRef Texuture,
+	FRHITexture* Texuture,
 	FCustomUniformData Data)
 {
 	check(IsInRenderingThread());
@@ -73,14 +82,17 @@ void DrawRenderTarget_RenderThread(
 
 void DrawComputerShader_RenderThread(FRHICommandListImmediate& RHICmdList,
 									FTextureRenderTargetResource* RenderTargetResource,
-									ERHIFeatureLevel::Type FeatureLevel)
+									ERHIFeatureLevel::Type FeatureLevel,
+									EPixelFormat PixelFormat,
+									float GTime)
 {
+	
 	check(IsInRenderingThread());
 
 	FTexture2DRHIRef Texture2DRHIRef = RenderTargetResource->GetRenderTargetTexture();
-	uint32 GroupSize = 32;
-	uint32 GroupSizeX = FMath::DivideAndRoundUp(RenderTargetResource->GetSizeX(), GroupSize);
-	uint32 GroupSizeY = FMath::DivideAndRoundUp(RenderTargetResource->GetSizeY(), GroupSize);
+	uint32 GroupNumb = 32;
+	uint32 GroupSizeX = FMath::DivideAndRoundUp(RenderTargetResource->GetSizeX(), GroupNumb);
+	uint32 GroupSizeY = FMath::DivideAndRoundUp(RenderTargetResource->GetSizeY(), GroupNumb);
 
 	// 设置computershader
 	FGlobalShaderMap* GlobalShaderMap = GetGlobalShaderMap(FeatureLevel);
@@ -89,77 +101,85 @@ void DrawComputerShader_RenderThread(FRHICommandListImmediate& RHICmdList,
 
 	// 创建UAV
 	FRHIResourceCreateInfo CreateInfo;
-	FTexture2DRHIRef tempRHIRef = RHICreateTexture2D(RenderTargetResource->GetSizeX(), RenderTargetResource->GetSizeY(),
-													PF_FloatRGBA, 1, 1, TexCreate_ShaderResource | TexCreate_UAV,
+	FTexture2DRHIRef UAVRHIRef = RHICreateTexture2D(RenderTargetResource->GetSizeX(), RenderTargetResource->GetSizeY(),
+													PixelFormat, 1, 1, TexCreate_ShaderResource | TexCreate_UAV,
 													CreateInfo);
-	FUnorderedAccessViewRHIRef UAV = RHICreateUnorderedAccessView(tempRHIRef);
+	FUnorderedAccessViewRHIRef UAV = RHICreateUnorderedAccessView(UAVRHIRef);
 
 	// 开始渲染
-	ComputerShader->SetParameters(RHICmdList,UAV);
+	ComputerShader->SetParameters(RHICmdList,UAV,GTime);
 	DispatchComputeShader(RHICmdList,ComputerShader,GroupSizeX,GroupSizeY,1);
 	ComputerShader->UnsetParameters(RHICmdList,UAV);
 
 	// 复制结果
 	FRHICopyTextureInfo CopyInfo;
-	RHICmdList.CopyTexture(tempRHIRef,Texture2DRHIRef,CopyInfo);
+	RHICmdList.CopyTexture(UAVRHIRef,Texture2DRHIRef,CopyInfo);
+
+	// 调用GlobalShader
+	// FLinearColor Color = FLinearColor(FVector4(1.f,1.f,1.f,1.f));
+	// FCustomUniformData Data;
+	// Data.ColorIndex = 0;
+	// Data.ColorOne = FLinearColor(FVector4(1.f,1.f,1.f,1.f));
+	// Data.ColorTwo = FLinearColor(FVector4(1.f,1.f,1.f,1.f));
+	// DrawRenderTarget_RenderThread(RHICmdList,RenderTargetResource,FeatureLevel,FName("NULL"),Color,tempRHIRef.GetReference(),Data);
 }
 
-void FImportImage::Init2DWithParams(int32 InSizeX, int32 InSizeY, ETextureSourceFormat InFormat, bool InSRGB)
-{
-	SizeX = InSizeX;
-	SizeY = InSizeY;
-	NumMips = 1;
-	Format = InFormat;
-	SRGB = InSRGB;
-}
 
 URenderFunctionLibrary::URenderFunctionLibrary(const FObjectInitializer& ObjectInitializer)
 	: Super(ObjectInitializer)
 {
 }
 
-void URenderFunctionLibrary::DrawTestShaderRenderTarget(UTextureRenderTarget2D* OutputRenderTarget, AActor* AC,
+void URenderFunctionLibrary::UseGlobalShader(UTextureRenderTarget2D* TextureRenderTarget, AActor* Actor,
 														FLinearColor Color, UTexture2D* Texture,
 														FCustomUniformData Data)
 {
 	check(IsInGameThread());
 
-	if (!OutputRenderTarget)
+	if (!TextureRenderTarget)
 	{
 		return;
 	}
-	Texture->CreateResource();
-	FTextureReferenceRHIRef T = Texture->TextureReference.TextureReferenceRHI;
-	FTextureRenderTargetResource* TextureRenderTargetResource = OutputRenderTarget->
-		GameThread_GetRenderTargetResource();
-	const UWorld* World = AC->GetWorld();
+	
+	FRHITexture* RHITexture = Texture->TextureReference.TextureReferenceRHI.GetReference();
+	FTextureRenderTargetResource* TextureRenderTargetResource = TextureRenderTarget->GameThread_GetRenderTargetResource();
+
+	// 主要就是获取 FeatureLevel
+	const UWorld* World = Actor->GetWorld();
 	ERHIFeatureLevel::Type FeatureLevel = World->Scene->GetFeatureLevel();
-	FName TextureRenderTargetName = OutputRenderTarget->GetFName();
+	
+	FName TextureRenderTargetName = TextureRenderTarget->GetFName();
+	
 	ENQUEUE_RENDER_COMMAND(CaptureCommand)(
-		[TextureRenderTargetResource, FeatureLevel, Color, TextureRenderTargetName,T,Data](
+		[TextureRenderTargetResource, FeatureLevel, Color, TextureRenderTargetName,RHITexture,Data](
 		FRHICommandListImmediate& RHICmdList)
 		{
 			DrawRenderTarget_RenderThread(RHICmdList, TextureRenderTargetResource, FeatureLevel,
-										TextureRenderTargetName, Color, T, Data);
+										TextureRenderTargetName, Color, RHITexture, Data);
 		}
 	);
 }
 
-void URenderFunctionLibrary::DrawTestCPShader(UTextureRenderTarget2D* OutputRenderTarget, AActor* AC)
+void URenderFunctionLibrary::UseComputeShader(UTextureRenderTarget2D* TextureRenderTarget, AActor* Actor,float GTime)
 {
-	if (OutputRenderTarget == nullptr)
+	check(IsInGameThread());
+	
+	if (TextureRenderTarget == nullptr || Actor == nullptr)
 		return;
 
-	const UWorld* World = AC->GetWorld();
+	// 主要就是获取 FeatureLevel
+	const UWorld* World = Actor->GetWorld();
 	ERHIFeatureLevel::Type FeatureLevel = World->Scene->GetFeatureLevel();
-	FTextureRenderTargetResource* TextureRenderTargetResource = OutputRenderTarget->
-		GameThread_GetRenderTargetResource();
+
+	// 获取对应的格式
+	EPixelFormat PixelFormat = GetPixelFormatFromRenderTargetFormat(TextureRenderTarget->RenderTargetFormat);
+	FTextureRenderTargetResource* TextureRenderTargetResource = TextureRenderTarget->GameThread_GetRenderTargetResource();
 
 	ENQUEUE_RENDER_COMMAND(CaptureCommand)(
-		[TextureRenderTargetResource, FeatureLevel](
+		[TextureRenderTargetResource, FeatureLevel,PixelFormat,GTime](
 		FRHICommandListImmediate& RHICmdList)
 		{
-			DrawComputerShader_RenderThread(RHICmdList, TextureRenderTargetResource, FeatureLevel);
+			DrawComputerShader_RenderThread(RHICmdList, TextureRenderTargetResource, FeatureLevel,PixelFormat,GTime);
 		}
 	);
 }

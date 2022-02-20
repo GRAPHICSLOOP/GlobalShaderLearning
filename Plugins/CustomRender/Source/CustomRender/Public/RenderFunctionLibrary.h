@@ -26,15 +26,33 @@ class URenderFunctionLibrary : public UBlueprintFunctionLibrary
 {
 	GENERATED_UCLASS_BODY()
 	UFUNCTION(BlueprintCallable, Category = "RenderShaderLibaryPlugin", meta = (WorldContext = "WorldContextObject"))
-	static void DrawTestShaderRenderTarget(class UTextureRenderTarget2D* OutputRenderTarget, AActor* AC,
+	static void UseGlobalShader(class UTextureRenderTarget2D* TextureRenderTarget, AActor* Actor,
 											FLinearColor Color, UTexture2D* Texture, FCustomUniformData Data);
 
+	
+	/**
+	 * @brief 自定义ComputeShader
+	 * @param TextureRenderTarget 
+	 * @param AC 
+	 * @param GTime 全局时间
+	 */
 	UFUNCTION(BlueprintCallable, Category = "RenderShaderLibaryPlugin", meta = (WorldContext = "WorldContextObject"))
-	static void DrawTestCPShader(class UTextureRenderTarget2D* OutputRenderTarget, AActor* AC);
+	static void UseComputeShader(class UTextureRenderTarget2D* TextureRenderTarget, AActor* Actor, float GTime);
 
+	
+	/**
+	 * @brief 贴图写入
+	 * @param TextureToBeWrite 要被写入的贴图
+	 */
 	UFUNCTION(BlueprintCallable, Category = "RenderShaderLibaryPlugin", meta = (WorldContext = "WorldContextObject"))
 	static void TextureWriting(UTexture2D* TextureToBeWrite);
 
+	
+	/**
+	 * @brief 从路径中加载贴图并创建资源到指定目录
+	 * @param Filename 本地路径
+	 * @param PackageName UE4路径
+	 */
 	UFUNCTION(BlueprintCallable, Category = "RenderShaderLibaryPlugin", meta = (WorldContext = "WorldContextObject"))
 	static void LoadTexture2DFormFile(const FString& Filename,const FString& PackageName);
 };
